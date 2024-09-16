@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vue.js Chat with Code Display</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/y-indexeddb@9.0.9/dist/y-indexeddb.min.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "vue": "https://unpkg.com/vue@3/dist/vue.esm-browser.js",
+          "sse.js": "https://cdn.jsdelivr.net/npm/sse.js@2.1.0/lib/sse.min.js"
+        }
+      }
+    </script>
+    <style>
+      @layer base {
+        :root {
+          --background: 0 0% 100%;
+          --foreground: 240 10% 3.9%;
+          --card: 0 0% 100%;
+          --card-foreground: 240 10% 3.9%;
+          --popover: 0 0% 100%;
+          --popover-foreground: 240 10% 3.9%;
+          --primary: 240 5.9% 10%;
+          --primary-foreground: 0 0% 98%;
+          --secondary: 240 4.8% 95.9%;
+          --secondary-foreground: 240 5.9% 10%;
+          --muted: 240 4.8% 95.9%;
+          --muted-foreground: 240 3.8% 46.1%;
+          --accent: 240 4.8% 95.9%;
+          --accent-foreground: 240 5.9% 10%;
+          --destructive: 0 84.2% 60.2%;
+          --destructive-foreground: 0 0% 98%;
+          --border: 240 5.9% 90%;
+          --input: 240 5.9% 90%;
+          --ring: 240 5.9% 10%;
+          --radius: 0.5rem;
+          --chart-1: 12 76% 61%;
+          --chart-2: 173 58% 39%;
+          --chart-3: 197 37% 24%;
+          --chart-4: 43 74% 66%;
+          --chart-5: 27 87% 67%;
+        }
+
+        .dark {
+          --background: 240 10% 3.9%;
+          --foreground: 0 0% 98%;
+          --card: 240 10% 3.9%;
+          --card-foreground: 0 0% 98%;
+          --popover: 240 10% 3.9%;
+          --popover-foreground: 0 0% 98%;
+          --primary: 0 0% 98%;
+          --primary-foreground: 240 5.9% 10%;
+          --secondary: 240 3.7% 15.9%;
+          --secondary-foreground: 0 0% 98%;
+          --muted: 240 3.7% 15.9%;
+          --muted-foreground: 240 5% 64.9%;
+          --accent: 240 3.7% 15.9%;
+          --accent-foreground: 0 0% 98%;
+          --destructive: 0 62.8% 30.6%;
+          --destructive-foreground: 0 0% 98%;
+          --border: 240 3.7% 15.9%;
+          --input: 240 3.7% 15.9%;
+          --ring: 240 4.9% 83.9%;
+          --chart-1: 220 70% 50%;
+          --chart-2: 160 60% 45%;
+          --chart-3: 30 80% 55%;
+          --chart-4: 280 65% 60%;
+          --chart-5: 340 75% 55%;
+        }
+      }
+
+      body {
+        background-color: hsl(var(--background));
+        color: hsl(var(--foreground));
+      }
+
+      .code-block {
+        background-color: hsl(var(--secondary));
+        color: hsl(var(--secondary-foreground));
+        border-radius: var(--radius);
+        padding: 1rem;
+        margin-bottom: 1rem;
+        font-family: monospace;
+        white-space: pre-wrap;
+        word-break: break-all;
+        cursor: pointer;
+      }
+
+      .code-block.active {
+        border: 2px solid hsl(var(--primary));
+      }
+
+      .preview.fixed {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        background-color: hsl(var(--background));
+        padding: 1rem;
+        overflow: auto;
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="loading"
+      class="z-50 fixed inset-0 flex justify-center items-center bg-opacity-75"
+      style="background-color: hsl(var(--background))"
+    >
+      <div
+        class="border-t-2 border-b-2 rounded-full w-32 h-32 animate-spin"
+        style="border-color: hsl(var(--primary))"
+      ></div>
+    </div>
+
+    <div id="app" class="mx-auto p-4 container" style="display: none">
+      <div class="top-4 right-4 z-10 fixed">
+        <button
+          @click="toggleTheme"
+          class="p-2 rounded-full"
+          :style="{
+            backgroundColor: `hsl(var(--secondary))`,
+            color: `hsl(var(--secondary-foreground))`
+          }"
+        >
+          🌓
+        </button>
+        <button
+          @click="showConfig = true"
+          class="ml-2 p-2 rounded-full"
+          :style="{
+            backgroundColor: `hsl(var(--secondary))`,
+            color: `hsl(var(--secondary-foreground))`
+          }"
+        >
+          ⚙️
+        </button>
+      </div>
+
+      <div class="flex md:flex-row flex-col">
+        <!-- Left side: Chat -->
+        <div class="mb-4 md:mb-0 md:pr-2 w-full md:w-1/2">
+          <div
+            class="flex flex-col shadow p-4 rounded-lg h-[calc(100vh-2rem)]"
+            :style="{
+              backgroundColor: `hsl(var(--card))`,
+              color: `hsl(var(--card-foreground))`
+            }"
+          >
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="font-bold text-xl">Chat - Room: {{ roomId }}</h2>
+              <!-- <div>
+                <span class="mr-2">Online users: {{ onlineUsers }}</span>
+              </div> -->
+            </div>
+            <div ref="messagesView" class="flex-grow mb-4 overflow-y-auto">
+              <div
+                v-for="(message, index) in messages"
+                :key="index"
+                class="mb-4"
+              >
+                <div v-if="message?.role !== 'system'">
+                  <div class="flex justify-between items-center mb-2">
+                    <span
+                      class="font-bold"
+                      :style="{
+                        color: message.role === 'user' ? 'hsl(var(--chart-1))' : 'hsl(var(--chart-2))'
+                      }"
+                    >
+                      {{ message.role }}
+                    </span>
+                    <button
+                      @click="refresh(index)"
+                      class="text-sm hover:text-gray-700"
+                      :style="{ color: `hsl(var(--muted-foreground))` }"
+                    >
+                      Reload
+                    </button>
+                  </div>
+                  <div
+                    v-if="message.content"
+                    @click="setActiveCodeBlock(index)"
+                    v-html="formatMessage(message.content,index)"
+                  ></div>
+                </div>
+              </div>
+              <div
+                v-if="error"
+                class="relative mb-4 px-4 py-3 rounded"
+                role="alert"
+                :style="{
+                  backgroundColor: `hsl(var(--destructive))`,
+                  color: `hsl(var(--destructive-foreground))`
+                }"
+              >
+                <strong class="font-bold">Error:</strong>
+                <span class="block sm:inline">{{ error }}</span>
+                <button
+                  @click="retryLastMessage"
+                  class="mt-2 px-2 py-1 rounded font-bold"
+                  :style="{
+                    backgroundColor: `hsl(var(--destructive-foreground))`,
+                    color: `hsl(var(--destructive))`
+                  }"
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+            <div class="mt-auto">
+              <textarea
+                v-model="userInput"
+                @keyup.enter="sendMessage"
+                class="p-2 border rounded w-full !outline-[#000] dark:outline-white resize-none"
+                rows="3"
+                :style="{
+                  backgroundColor: `hsl(var(--input))`,
+                  color: `hsl(var(--input-foreground))`,
+                  borderColor: `hsl(var(--border))`
+                }"
+                placeholder="Type your message..."
+                :disabled="isLoading"
+              ></textarea>
+              <button
+                @click="sendMessage"
+                class="mt-2 px-4 py-2 rounded text-white"
+                :style="{
+                  backgroundColor: `hsl(var(--primary))`,
+                  color: `hsl(var(--primary-foreground))`
+                }"
+                :disabled="isLoading"
+              >
+                {{ isLoading ? 'Sending...' : 'Send' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right side: Code Display and Iframe -->
+        <div class="md:pl-2 w-full md:w-1/2">
+          <div
+            class="flex flex-col shadow p-4 rounded-lg h-[calc(100vh-2rem)]"
+            :style="{
+              backgroundColor: `hsl(var(--card))`,
+              color: `hsl(var(--card-foreground))`
+            }"
+          >
+            <div class="flex mb-4">
+              <button
+                @click="activeTab = 'code'"
+                :class="{
+                  'text-white': activeTab === 'code'
+                }"
+                class="px-4 py-2 rounded-l"
+                :style="{
+                  backgroundColor: activeTab === 'code' ? `hsl(var(--primary))` : `hsl(var(--secondary))`,
+                  color: activeTab === 'code' ? `hsl(var(--primary-foreground))` : `hsl(var(--secondary-foreground))`
+                }"
+              >
+                Code View
+              </button>
+              <button
+                @click="activeTab = 'iframe'"
+                :class="{
+                  'text-white': activeTab === 'iframe'
+                }"
+                class="px-4 py-2 rounded-r"
+                :style="{
+                  backgroundColor: activeTab === 'iframe' ? `hsl(var(--primary))` : `hsl(var(--secondary))`,
+                  color: activeTab === 'iframe' ? `hsl(var(--primary-foreground))` : `hsl(var(--secondary-foreground))`
+                }"
+              >
+                Preview
+              </button>
+            </div>
+            <div
+              v-if="activeTab === 'code'"
+              class="relative flex-grow overflow-y-auto"
+            >
+              <pre><code>{{ codeContent }}</code></pre>
+              <div
+                v-if="isLoading"
+                class="top-2 right-2 absolute shadow p-2 rounded"
+                :style="{
+                  backgroundColor: `hsl(var(--background))`,
+                  color: `hsl(var(--foreground))`
+                }"
+              >
+                <div
+                  class="border-t-2 border-b-2 rounded-full w-6 h-6 animate-spin"
+                  :style="{ borderColor: `hsl(var(--primary))` }"
+                ></div>
+              </div>
+            </div>
+            <iframe
+              v-show="activeTab === 'iframe'"
+              ref="codeIframe"
+              class="flex-grow border w-full preview"
+              :style="{ borderColor: `hsl(var(--border))` }"
+            ></iframe>
+            <div class="flex justify-end mt-4">
+              <button
+                @click="copyCode"
+                class="px-4 py-2 rounded text-white"
+                :style="{
+                  backgroundColor: `hsl(var(--chart-2))`,
+                  color: `hsl(var(--accent-foreground))`
+                }"
+              >
+                Copy Code
+              </button>
+              <button
+                @click="toggleFullScreen"
+                class="ml-2 px-4 py-2 rounded text-white"
+                :style="{
+                  backgroundColor: `hsl(var(--primary))`,
+                  color: `hsl(var(--primary-foreground))`
+                }"
+              >
+                Toggle Full Screen
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Config Modal -->
+      <div
+        v-if="showConfig"
+        class="z-20 fixed inset-0 flex justify-center items-center bg-opacity-50"
+        :style="{ backgroundColor: `hsl(var(--background))` }"
+      >
+        <div
+          class="p-6 rounded-lg w-96 max-h-[90vh] overflow-y-auto"
+          :style="{
+            backgroundColor: `hsl(var(--card))`,
+            color: `hsl(var(--card-foreground))`
+          }"
+        >
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="font-bold text-xl">Configuration</h2>
+            <button
+              @click="showConfig = false"
+              class="hover:text-gray-700"
+              :style="{ color: `hsl(var(--muted-foreground))` }"
+            >
+              ✖
+            </button>
+          </div>
+          <div v-for="(value, key) in config" :key="key" class="mb-4">
+            <label :for="key" class="block mb-1">{{ key }}</label>
+            <input
+              :id="key"
+              v-model="config[key]"
+              :type="key === 'apiKey' ? 'password' : 'text'"
+              class="p-2 border rounded w-full"
+              :style="{
+                backgroundColor: `hsl(var(--input))`,
+                color: `hsl(var(--input-foreground))`,
+                borderColor: `hsl(var(--border))`
+              }"
+            />
+          </div>
+          <button
+            @click="saveConfig"
+            class="px-4 py-2 rounded text-white"
+            :style="{
+              backgroundColor: `hsl(var(--primary))`,
+              color: `hsl(var(--primary-foreground))`
+            }"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { createApp } from "vue";
+      import { SSE } from "sse.js";
+      import * as Y from "https://esm.sh/yjs@13.6.19";
+      import { IndexeddbPersistence } from "https://cdn.jsdelivr.net/npm/y-indexeddb@9.0.12/+esm";
+
+      const app = createApp({
+        data() {
+          return {
+            messages: [],
+            userInput: "",
+            isLoading: false,
+            config: {
+              apiKey: "",
+              endPoint: "https://api.groq.com/openai/v1/chat/completions",
+              model: "llama-3.1-70b-versatile",
+              temperature: 0.7,
+              max_tokens: 1000,
+              top_p: 1,
+              frequency_penalty: 0,
+              presence_penalty: 0,
+            },
+            roomId: "",
+            ydoc: null,
+            yMessages: null,
+            activeTab: "code",
+            codeContent: "",
+            error: null,
+            onlineUsers: 1,
+            activeCodeBlockIndex: null,
+            showConfig: false,
+            isDarkTheme: false,
+            isFull: false,
+          };
+        },
+        computed: {
+          isConfigured() {
+            return this.config.apiKey && this.config.endPoint;
+          },
+        },
+        mounted() {
+          this.initRoom();
+          this.initYjs();
+          this.loadConfig();
+          this.loadTheme();
+          document.getElementById("loading").style.display = "none";
+          document.getElementById("app").style.display = "block";
+
+          document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && this.showConfig) {
+              this.showConfig = false;
+            }
+          });
+        },
+        methods: {
+          initRoom() {
+            const hash = window.location.hash;
+            const [roomId, activeCodeBlock, fullScreen] = hash
+              .slice(1)
+              .split("|");
+            this.roomId = roomId || "default";
+            this.activeCodeBlockIndex = parseInt(activeCodeBlock) || null;
+            if (fullScreen === "full") {
+              this.$nextTick(() => {
+                this.isFull = true;
+                this.activeTab = "iframe";
+                this.toggleFullScreen();
+              });
+            }
+            document.addEventListener("keydown", this.handleEscapeKey);
+          },
+          async initYjs() {
+            this.ydoc = new Y.Doc();
+            this.yMessages = this.ydoc.getArray("messages");
+
+            const indexeddbProvider = new IndexeddbPersistence(
+              this.roomId,
+              this.ydoc
+            );
+            await indexeddbProvider.whenSynced;
+
+            this.yMessages.observe((event) => {
+              this.messages = this.yMessages.toArray();
+              this.updateCodeDisplay();
+            });
+
+            if (this.yMessages.length === 0) {
+              try {
+                const storedMessages = JSON.parse(
+                  localStorage.getItem(this.roomId) || "[]"
+                );
+                this.yMessages.insert(0, storedMessages);
+              } catch (e) {
+                console.log(e);
+              }
+            } else {
+              this.messages = this.yMessages.toArray();
+              this.updateCodeDisplay();
+              this.$nextTick(() => {
+                const messagesView = this.$refs.messagesView;
+                messagesView.scrollTo(0, messagesView.scrollHeight);
+              });
+            }
+          },
+          sendMessage() {
+            const messagesView = this.$refs.messagesView;
+            messagesView.scrollTo(0, messagesView.scrollHeight);
+
+            if (this.userInput.trim() === "") return;
+            const message = {
+              role: "user",
+              content: this.userInput,
+            };
+            if (!this.yMessages?.length) {
+              this.yMessages.push([
+                {
+                  role: "system",
+                  content: `you are a helpful ai code assistant, you always use vuejs cdn and tailwind to generate full html code based on what user asked.
+js: https://cdn.tailwindcss.com
+js: https://unpkg.com/vue@3/dist/vue.global.js
+- keep conversation short and helpful.
+-- finish
+    `,
+                },
+              ]);
+            }
+            this.yMessages.push([message]);
+            this.send();
+            this.userInput = "";
+          },
+          refresh(index) {
+            this.yMessages.delete(index + 1, this.yMessages.length - index - 1);
+            this.send(true);
+          },
+          send(refresh = false) {
+            this.isLoading = true;
+            this.error = null;
+            let data = {
+              messages: this.messages,
+              ...this.config,
+              stream: true,
+            };
+            delete data.apiKey;
+            delete data.endPoint;
+
+            if (refresh) {
+              this.yMessages.delete(this.yMessages.length - 1, 1);
+            }
+
+            const assistantMessage = {
+              role: "assistant",
+              content: "",
+            };
+            this.yMessages.push([assistantMessage]);
+
+            var source = new SSE(this.config.endPoint, {
+              headers: {
+                accept: "*/*",
+                "content-type": "application/json",
+                authorization: "Bearer " + this.config.apiKey,
+              },
+              payload: JSON.stringify(data),
+              method: "POST",
+            });
+
+            source.addEventListener("message", (e) => {
+              try {
+                console.log(e.type, e.data);
+
+                if (e.data?.trim?.() === "[DONE]") {
+                  this.isLoading = false;
+                  this.updateCodeDisplay(true);
+                  const messagesView = this.$refs.messagesView;
+                  messagesView.scrollTo(0, messagesView.scrollHeight);
+                  source.close();
+                  localStorage.setItem(
+                    this.roomId,
+                    JSON.stringify(this.messages)
+                  );
+                  return;
+                }
+                var payload = JSON.parse(e.data);
+                const message = payload.choices[0].delta.content;
+                if (message) {
+                  assistantMessage.content += message;
+                  this.yMessages.delete(this.yMessages.length - 1, 1);
+                  this.yMessages.push([assistantMessage]);
+                }
+              } catch (error) {
+                console.error("Error parsing SSE message:", error);
+                // this.error = "Error parsing SSE message";
+              }
+            });
+
+            source.addEventListener("error", (error) => {
+              console.error("SSE Error:", error);
+              this.error = "Error connecting to the server";
+              this.isLoading = false;
+              source.close();
+            });
+
+            source.stream();
+          },
+          formatMessage(content, index) {
+            return content.replace(/```([\s\S]*?)```/g, (match, code) => {
+              return `<div class="code-block ${
+                this.activeCodeBlockIndex === index ? "active" : ""
+              }">switch to this block</div>`;
+            });
+          },
+          setActiveCodeBlock(index) {
+            this.activeCodeBlockIndex = index;
+            this.updateCodeDisplay();
+          },
+          updateCodeDisplay(last = false) {
+            const blocks = this.messages.map(
+              (msg) => msg.content.match(/```[\s\S]*?```/g)?.[0] ?? ""
+            );
+            const lastBlock = blocks[blocks.length - 1];
+            if (last && lastBlock !== "") {
+              this.activeCodeBlockIndex = blocks.length - 1;
+            }
+            if (blocks && this.activeCodeBlockIndex) {
+              let content =
+                blocks[this.activeCodeBlockIndex]?.replace(/```/g, "") || "";
+              if (content.startsWith("html")) {
+                content = content.replace("html", "");
+              }
+              this.codeContent = content;
+              this.activeTab = "iframe";
+              this.$nextTick(() => {
+                if (this.activeTab === "iframe") {
+                  this.updateIframe();
+                }
+              });
+            }
+            let path = `#${this.roomId}|${this.activeCodeBlockIndex}`;
+            if (this.isFull) {
+              path += "|full";
+            }
+            if (this.activeCodeBlockIndex) {
+              window.history.pushState({}, "", path);
+            }
+          },
+          updateIframe() {
+            this.$refs.codeIframe.srcdoc = this.codeContent;
+          },
+          copyCode() {
+            navigator.clipboard
+              .writeText(this.codeContent)
+              .then(() => {
+                alert("Code copied to clipboard!");
+              })
+              .catch((err) => {
+                console.error("Error copying code: ", err);
+              });
+          },
+          retryLastMessage() {
+            this.error = null;
+            this.send(true);
+          },
+          toggleTheme() {
+            this.isDarkTheme = !this.isDarkTheme;
+            document.documentElement.classList.toggle("dark", this.isDarkTheme);
+            localStorage.setItem("isDarkTheme", this.isDarkTheme);
+          },
+          saveConfig() {
+            localStorage.setItem("chatConfig", JSON.stringify(this.config));
+            this.showConfig = false;
+          },
+          loadConfig() {
+            const savedConfig = localStorage.getItem("chatConfig");
+            if (savedConfig) {
+              this.config = { ...this.config, ...JSON.parse(savedConfig) };
+            }
+          },
+          loadTheme() {
+            const savedTheme = localStorage.getItem("isDarkTheme");
+            if (savedTheme !== null) {
+              this.isDarkTheme = JSON.parse(savedTheme);
+            } else {
+              this.isDarkTheme = window.matchMedia(
+                "(prefers-color-scheme: dark)"
+              ).matches;
+            }
+            document.documentElement.classList.toggle("dark", this.isDarkTheme);
+          },
+          toggleFullScreen() {
+            const codeElement = this.$refs.codeIframe;
+            if (codeElement) {
+              //   this.$refs?.codeIframe.requestFullscreen();
+              codeElement.classList.toggle("fixed");
+
+              if (this.isFull) {
+                window.history.pushState(
+                  {},
+                  "",
+                  `#${this.roomId}|${this.activeCodeBlockIndex}|full`
+                );
+              } else {
+                window.history.pushState(
+                  {},
+                  "",
+                  `#${this.roomId}|${this.activeCodeBlockIndex}`
+                );
+              }
+
+              // Add an event listener for the Escape key
+            }
+          },
+          handleEscapeKey(event) {
+            if (event.key === "Escape") {
+              this.closeFullscreen();
+            }
+          },
+          closeFullscreen() {
+            if (this.isFull) {
+              this.$refs.codeIframe.classList.remove("fixed");
+              window.history.pushState(
+                {},
+                "",
+                `#${this.roomId}|${this.activeCodeBlockIndex}`
+              );
+              try {
+                // document.exitFullscreen();
+              } catch (e) {}
+            }
+          },
+        },
+        watch: {
+          activeTab(newTab) {
+            if (newTab === "iframe") {
+              this.$nextTick(() => {
+                this.updateIframe();
+              });
+            }
+          },
+        },
+      });
+
+      app.mount("#app");
+    </script>
+  </body>
+</html>
